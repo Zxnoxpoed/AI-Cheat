@@ -1,98 +1,4 @@
 local Players = game:GetService("Players")
-local UserInputService = game:GetService("UserInputService")
-local RunService = game:GetService("RunService")
-local Camera = game.Workspace.CurrentCamera
-local LocalPlayer = Players.LocalPlayer
-
--- UI Elements
-local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
-local AimAssistUI = PlayerGui:FindFirstChild("AimAssistGUI") -- GUI must exist
-local AimAssistSlider = AimAssistUI and AimAssistUI:FindFirstChild("AimAssistSlider")
-
--- Settings
-local AimbotEnabled = false -- Press "E" to toggle
-local LockOnRange = 150 -- Max distance to lock onto enemies
-local DefaultAimSpeed = 0.3 -- Reduced smoothing for faster snapping
-local AimSpeed = DefaultAimSpeed
-local TargetPriority = "Closest" -- Options: "Closest" or "LowestHealth"
-local currentTarget = nil
-
--- Function to find the best target (closest to crosshair)
-local function getBestTarget()
-    local bestTarget = nil
-    local bestDistance = math.huge
-
-    for _, player in pairs(Players:GetPlayers()) do
-        if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") and player.Character:FindFirstChild("Humanoid") then
-            local char = player.Character
-            local root = char:FindFirstChild("HumanoidRootPart")
-            local humanoid = char:FindFirstChild("Humanoid")
-
-            if root and humanoid and humanoid.Health > 0 then
-                local screenPosition, onScreen = Camera:WorldToViewportPoint(root.Position)
-                local mousePosition = UserInputService:GetMouseLocation()
-                local distanceToMouse = (Vector2.new(screenPosition.X, screenPosition.Y) - mousePosition).Magnitude
-                local worldDistance = (Camera.CFrame.Position - root.Position).Magnitude
-
-                if onScreen and worldDistance < LockOnRange and distanceToMouse < bestDistance then
-                    -- Raycast check to ensure visibility (no wall blocking)
-                    local ray = Ray.new(Camera.CFrame.Position, (root.Position - Camera.CFrame.Position).Unit * worldDistance)
-                    local hitPart, hitPlayer = workspace:FindPartOnRayWithIgnoreList(ray, {LocalPlayer.Character, Camera})
-
-                    if hitPart and hitPart:IsDescendantOf(player.Character) then
-                        bestTarget = root
-                        bestDistance = distanceToMouse
-                    end
-                end
-            end
-        end
-    end
-
-    return bestTarget
-end
-
--- Faster Aim Assist Function (Reduced Smoothing)
-local function aimAtTarget(target)
-    if target then
-        local targetPosition = target.Position
-        local direction = (targetPosition - Camera.CFrame.Position).Unit
-        local newCFrame = Camera.CFrame:Lerp(CFrame.lookAt(Camera.CFrame.Position, Camera.CFrame.Position + direction), AimSpeed)
-        Camera.CFrame = newCFrame
-    end
-end
-
--- Toggle Aimbot with "E"
-UserInputService.InputBegan:Connect(function(input, processed)
-    if not processed and input.KeyCode == Enum.KeyCode.E then
-        AimbotEnabled = not AimbotEnabled
-        if not AimbotEnabled then
-            currentTarget = nil -- Reset target when turned off
-        end
-    end
-end)
-
--- Update Aim Speed from Slider
-if AimAssistSlider then
-    AimAssistSlider.Changed:Connect(function()
-        AimSpeed = DefaultAimSpeed + (AimAssistSlider.Value / 100) * 0.4 -- Faster response time
-    end)
-end
-
--- Main Loop (Auto-Switch Targets Based on Mouse Movement)
-RunService.RenderStepped:Connect(function()
-    if AimbotEnabled then
-        local newTarget = getBestTarget()
-
-        if newTarget and newTarget ~= currentTarget then
-            currentTarget = newTarget -- Switch to new target when moving mouse
-        end
-
-        if currentTarget then
-            aimAtTarget(currentTarget)
-        end
-    end
-end)
-local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local LocalPlayer = Players.LocalPlayer
@@ -238,6 +144,113 @@ RunService.RenderStepped:Connect(function(deltaTime)
             root.AssemblyLinearVelocity = velocity
         else
             root.AssemblyLinearVelocity = Vector3.zero
+        end
+    end
+end)
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local Camera = game.Workspace.CurrentCamera
+local LocalPlayer = Players.LocalPlayer
+
+-- UI Elements
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+local AimAssistUI = PlayerGui:FindFirstChild("AimAssistGUI") -- GUI must exist
+local AimAssistSlider = AimAssistUI and AimAssistUI:FindFirstChild("AimAssistSlider")
+
+-- Settings
+local AimAssistEnabled = true -- Press "P" to disable completely
+local LockOnRange = 150 -- Max distance to lock onto enemies
+local DefaultAimSpeed = 0.3 -- Fast but smooth aim assist
+local AimSpeed = DefaultAimSpeed
+local currentTarget = nil
+local isLockingOn = false -- Whether Left Mouse is held
+
+-- Function to find the best target (closest to crosshair)
+local function getBestTarget()
+    local bestTarget = nil
+    local bestDistance = math.huge
+
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") and player.Character:FindFirstChild("Humanoid") then
+            local char = player.Character
+            local root = char:FindFirstChild("HumanoidRootPart")
+            local humanoid = char:FindFirstChild("Humanoid")
+
+            if root and humanoid and humanoid.Health > 0 then
+                local screenPosition, onScreen = Camera:WorldToViewportPoint(root.Position)
+                local mousePosition = UserInputService:GetMouseLocation()
+                local distanceToMouse = (Vector2.new(screenPosition.X, screenPosition.Y) - mousePosition).Magnitude
+                local worldDistance = (Camera.CFrame.Position - root.Position).Magnitude
+
+                if onScreen and worldDistance < LockOnRange and distanceToMouse < bestDistance then
+                    -- Raycast check to ensure visibility (no wall blocking)
+                    local ray = Ray.new(Camera.CFrame.Position, (root.Position - Camera.CFrame.Position).Unit * worldDistance)
+                    local hitPart, hitPlayer = workspace:FindPartOnRayWithIgnoreList(ray, {LocalPlayer.Character, Camera})
+
+                    if hitPart and hitPart:IsDescendantOf(player.Character) then
+                        bestTarget = root
+                        bestDistance = distanceToMouse
+                    end
+                end
+            end
+        end
+    end
+
+    return bestTarget
+end
+
+-- Smooth Aim Assist Function
+local function aimAtTarget(target)
+    if target then
+        local targetPosition = target.Position
+        local direction = (targetPosition - Camera.CFrame.Position).Unit
+        local newCFrame = Camera.CFrame:Lerp(CFrame.lookAt(Camera.CFrame.Position, Camera.CFrame.Position + direction), AimSpeed)
+        Camera.CFrame = newCFrame
+    end
+end
+
+-- Toggle Aim Assist ON/OFF with "P"
+UserInputService.InputBegan:Connect(function(input, processed)
+    if not processed and input.KeyCode == Enum.KeyCode.P then
+        AimAssistEnabled = not AimAssistEnabled
+        currentTarget = nil -- Reset target when disabling
+    end
+end)
+
+-- Hold Left Mouse to Lock On
+UserInputService.InputBegan:Connect(function(input, processed)
+    if not processed and input.UserInputType == Enum.UserInputType.MouseButton1 then
+        isLockingOn = true
+    end
+end)
+
+-- Release Left Mouse to Unlock
+UserInputService.InputEnded:Connect(function(input, processed)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        isLockingOn = false
+        currentTarget = nil -- Reset target when releasing click
+    end
+end)
+
+-- Update Aim Speed from Slider
+if AimAssistSlider then
+    AimAssistSlider.Changed:Connect(function()
+        AimSpeed = DefaultAimSpeed + (AimAssistSlider.Value / 100) * 0.4 -- Faster response time
+    end)
+end
+
+-- Main Loop (Locks On Only When Holding Left Click)
+RunService.RenderStepped:Connect(function()
+    if AimAssistEnabled and isLockingOn then
+        local newTarget = getBestTarget()
+
+        if newTarget and newTarget ~= currentTarget then
+            currentTarget = newTarget -- Switch to new target when moving mouse
+        end
+
+        if currentTarget then
+            aimAtTarget(currentTarget)
         end
     end
 end)
