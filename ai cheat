@@ -1,0 +1,243 @@
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local Camera = game.Workspace.CurrentCamera
+local LocalPlayer = Players.LocalPlayer
+
+-- UI Elements
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+local AimAssistUI = PlayerGui:FindFirstChild("AimAssistGUI") -- GUI must exist
+local AimAssistSlider = AimAssistUI and AimAssistUI:FindFirstChild("AimAssistSlider")
+
+-- Settings
+local AimbotEnabled = false -- Press "E" to toggle
+local LockOnRange = 150 -- Max distance to lock onto enemies
+local DefaultAimSpeed = 0.3 -- Reduced smoothing for faster snapping
+local AimSpeed = DefaultAimSpeed
+local TargetPriority = "Closest" -- Options: "Closest" or "LowestHealth"
+local currentTarget = nil
+
+-- Function to find the best target (closest to crosshair)
+local function getBestTarget()
+    local bestTarget = nil
+    local bestDistance = math.huge
+
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") and player.Character:FindFirstChild("Humanoid") then
+            local char = player.Character
+            local root = char:FindFirstChild("HumanoidRootPart")
+            local humanoid = char:FindFirstChild("Humanoid")
+
+            if root and humanoid and humanoid.Health > 0 then
+                local screenPosition, onScreen = Camera:WorldToViewportPoint(root.Position)
+                local mousePosition = UserInputService:GetMouseLocation()
+                local distanceToMouse = (Vector2.new(screenPosition.X, screenPosition.Y) - mousePosition).Magnitude
+                local worldDistance = (Camera.CFrame.Position - root.Position).Magnitude
+
+                if onScreen and worldDistance < LockOnRange and distanceToMouse < bestDistance then
+                    -- Raycast check to ensure visibility (no wall blocking)
+                    local ray = Ray.new(Camera.CFrame.Position, (root.Position - Camera.CFrame.Position).Unit * worldDistance)
+                    local hitPart, hitPlayer = workspace:FindPartOnRayWithIgnoreList(ray, {LocalPlayer.Character, Camera})
+
+                    if hitPart and hitPart:IsDescendantOf(player.Character) then
+                        bestTarget = root
+                        bestDistance = distanceToMouse
+                    end
+                end
+            end
+        end
+    end
+
+    return bestTarget
+end
+
+-- Faster Aim Assist Function (Reduced Smoothing)
+local function aimAtTarget(target)
+    if target then
+        local targetPosition = target.Position
+        local direction = (targetPosition - Camera.CFrame.Position).Unit
+        local newCFrame = Camera.CFrame:Lerp(CFrame.lookAt(Camera.CFrame.Position, Camera.CFrame.Position + direction), AimSpeed)
+        Camera.CFrame = newCFrame
+    end
+end
+
+-- Toggle Aimbot with "E"
+UserInputService.InputBegan:Connect(function(input, processed)
+    if not processed and input.KeyCode == Enum.KeyCode.E then
+        AimbotEnabled = not AimbotEnabled
+        if not AimbotEnabled then
+            currentTarget = nil -- Reset target when turned off
+        end
+    end
+end)
+
+-- Update Aim Speed from Slider
+if AimAssistSlider then
+    AimAssistSlider.Changed:Connect(function()
+        AimSpeed = DefaultAimSpeed + (AimAssistSlider.Value / 100) * 0.4 -- Faster response time
+    end)
+end
+
+-- Main Loop (Auto-Switch Targets Based on Mouse Movement)
+RunService.RenderStepped:Connect(function()
+    if AimbotEnabled then
+        local newTarget = getBestTarget()
+
+        if newTarget and newTarget ~= currentTarget then
+            currentTarget = newTarget -- Switch to new target when moving mouse
+        end
+
+        if currentTarget then
+            aimAtTarget(currentTarget)
+        end
+    end
+end)
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local LocalPlayer = Players.LocalPlayer
+
+local ESPEnabled = false -- Starts off, press T to toggle
+local ESPObjects = {} -- Store ESP highlights
+
+-- Function to create ESP highlight
+local function createESP(player)
+    if player == LocalPlayer then return end -- Don't show ESP on yourself
+
+    local char = player.Character or player.CharacterAdded:Wait()
+    local highlight = Instance.new("Highlight")
+    highlight.Parent = char
+    highlight.Adornee = char
+    highlight.FillColor = Color3.fromRGB(255, 0, 0) -- Red glow (change color if needed)
+    highlight.OutlineColor = Color3.fromRGB(255, 255, 255) -- White outline
+    highlight.FillTransparency = 0.5 -- Adjust for visibility
+    highlight.OutlineTransparency = 0 -- Outline always visible
+
+    ESPObjects[player] = highlight -- Store ESP object
+
+    -- Remove ESP when player leaves
+    player.CharacterRemoving:Connect(function()
+        if ESPObjects[player] then
+            ESPObjects[player]:Destroy()
+            ESPObjects[player] = nil
+        end
+    end)
+end
+
+-- Function to toggle ESP
+local function toggleESP()
+    ESPEnabled = not ESPEnabled
+
+    if ESPEnabled then
+        -- Enable ESP for all players
+        for _, player in pairs(Players:GetPlayers()) do
+            if not ESPObjects[player] then
+                createESP(player)
+            end
+        end
+    else
+        -- Disable ESP (Remove highlights)
+        for _, obj in pairs(ESPObjects) do
+            if obj then
+                obj:Destroy()
+            end
+        end
+        ESPObjects = {} -- Clear stored ESP objects
+    end
+end
+
+-- Detect new players and add ESP if enabled
+Players.PlayerAdded:Connect(function(player)
+    player.CharacterAdded:Connect(function()
+        if ESPEnabled then
+            createESP(player)
+        end
+    end)
+end)
+
+-- Hotkey to toggle ESP ("T" key)
+UserInputService.InputBegan:Connect(function(input, processed)
+    if not processed and input.KeyCode == Enum.KeyCode.T then
+        toggleESP()
+    end
+end)
+local player = game.Players.LocalPlayer
+local char = player.Character or player.CharacterAdded:Wait()
+local root = char:WaitForChild("HumanoidRootPart")
+local humanoid = char:WaitForChild("Humanoid")
+
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local Camera = game.Workspace.CurrentCamera
+
+local flying = false
+local speed = 100  -- Flight speed (adjust as needed)
+local acceleration = 5  -- How fast you accelerate
+local deceleration = 2  -- How fast you slow down
+local turnSpeed = 15  -- Instant but smooth turning
+
+local velocity = Vector3.zero  -- Stores movement momentum
+
+-- Get Movement Input (WASD + Space & Ctrl)
+local function getMovementInput()
+    local moveX = (UserInputService:IsKeyDown(Enum.KeyCode.D) and 1 or 0) - (UserInputService:IsKeyDown(Enum.KeyCode.A) and 1 or 0)
+    local moveY = (UserInputService:IsKeyDown(Enum.KeyCode.Space) and 1 or 0) - (UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) and 1 or 0)
+    local moveZ = (UserInputService:IsKeyDown(Enum.KeyCode.S) and 1 or 0) - (UserInputService:IsKeyDown(Enum.KeyCode.W) and 1 or 0)
+    return Vector3.new(moveX, moveY, moveZ)
+end
+
+-- Start Flying
+local function startFlying()
+    if flying then return end
+    flying = true
+    humanoid.PlatformStand = true
+    game.Workspace.Gravity = 0
+end
+
+-- Stop Flying
+local function stopFlying()
+    if not flying then return end
+    flying = false
+    humanoid.PlatformStand = false
+    game.Workspace.Gravity = 196.2
+    root.AssemblyLinearVelocity = Vector3.zero
+end
+
+-- Toggle Flight with "L"
+UserInputService.InputBegan:Connect(function(input, processed)
+    if processed then return end
+    if input.KeyCode == Enum.KeyCode.L then  -- Changed from F to L
+        if flying then stopFlying() else startFlying() end
+    end
+end)
+
+-- Smooth Flight Control (Mouse + WASD)
+RunService.RenderStepped:Connect(function(deltaTime)
+    if flying then
+        local cameraDirection = Camera.CFrame.LookVector  -- Move towards where the player is looking
+        local moveInput = getMovementInput()  -- WASD movement
+
+        -- Calculate desired movement direction
+        local targetDirection = (cameraDirection * -moveInput.Z) + (Camera.CFrame.RightVector * moveInput.X) + (Vector3.new(0, moveInput.Y, 0))
+        
+        if targetDirection.Magnitude > 0 then
+            targetDirection = targetDirection.Unit -- Normalize to avoid uneven speeds
+        end
+
+        -- Smooth acceleration
+        velocity = velocity:Lerp(targetDirection * speed, acceleration * deltaTime)
+
+        -- Smooth deceleration if no input
+        if targetDirection.Magnitude == 0 then
+            velocity = velocity:Lerp(Vector3.zero, deceleration * deltaTime)
+        end
+
+        -- Apply movement & instant but smooth rotation
+        if velocity.Magnitude > 0 then
+            root.CFrame = root.CFrame:Lerp(CFrame.lookAt(root.Position, root.Position + velocity), turnSpeed * deltaTime)
+            root.AssemblyLinearVelocity = velocity
+        else
+            root.AssemblyLinearVelocity = Vector3.zero
+        end
+    end
+end)
