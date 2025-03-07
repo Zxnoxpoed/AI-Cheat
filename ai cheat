@@ -1,256 +1,267 @@
-local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
-local UserInputService = game:GetService("UserInputService")
-local LocalPlayer = Players.LocalPlayer
-
-local ESPEnabled = false -- Starts off, press T to toggle
-local ESPObjects = {} -- Store ESP highlights
-
--- Function to create ESP highlight
-local function createESP(player)
-    if player == LocalPlayer then return end -- Don't show ESP on yourself
-
-    local char = player.Character or player.CharacterAdded:Wait()
-    local highlight = Instance.new("Highlight")
-    highlight.Parent = char
-    highlight.Adornee = char
-    highlight.FillColor = Color3.fromRGB(255, 0, 0) -- Red glow (change color if needed)
-    highlight.OutlineColor = Color3.fromRGB(255, 255, 255) -- White outline
-    highlight.FillTransparency = 0.5 -- Adjust for visibility
-    highlight.OutlineTransparency = 0 -- Outline always visible
-
-    ESPObjects[player] = highlight -- Store ESP object
-
-    -- Remove ESP when player leaves
-    player.CharacterRemoving:Connect(function()
-        if ESPObjects[player] then
-            ESPObjects[player]:Destroy()
-            ESPObjects[player] = nil
-        end
-    end)
-end
-
--- Function to toggle ESP
-local function toggleESP()
-    ESPEnabled = not ESPEnabled
-
-    if ESPEnabled then
-        -- Enable ESP for all players
-        for _, player in pairs(Players:GetPlayers()) do
-            if not ESPObjects[player] then
-                createESP(player)
-            end
-        end
-    else
-        -- Disable ESP (Remove highlights)
-        for _, obj in pairs(ESPObjects) do
-            if obj then
-                obj:Destroy()
-            end
-        end
-        ESPObjects = {} -- Clear stored ESP objects
-    end
-end
-
--- Detect new players and add ESP if enabled
-Players.PlayerAdded:Connect(function(player)
-    player.CharacterAdded:Connect(function()
-        if ESPEnabled then
-            createESP(player)
-        end
-    end)
-end)
-
--- Hotkey to toggle ESP ("T" key)
-UserInputService.InputBegan:Connect(function(input, processed)
-    if not processed and input.KeyCode == Enum.KeyCode.T then
-        toggleESP()
-    end
-end)
-local player = game.Players.LocalPlayer
-local char = player.Character or player.CharacterAdded:Wait()
-local root = char:WaitForChild("HumanoidRootPart")
-local humanoid = char:WaitForChild("Humanoid")
+local ESP = {}
+ESP.Settings = {
+    Enabled = true,
+    ToggleKey = Enum.KeyCode.RightBracket, -- 🔥 Hotkey Changed to `]`
+    BoxColor = Color3.fromRGB(0, 0, 255), -- 🔵 Blue ESP Box
+    BoxOutlineColor = Color3.fromRGB(0, 0, 0), -- ⚫ Black Outline
+    OverlayColor = Color3.fromRGB(0, 0, 255), -- 🔵 Blue Transparent Overlay
+    HealthBarColor = Color3.fromRGB(255, 0, 0), -- 🔴 Red Health Bar
+    TextColor = Color3.fromRGB(0, 0, 255), -- 🔵 Blue Name Tag
+    TextOutlineColor = Color3.fromRGB(255, 255, 255), -- ⚪ White Outline for Name
+    LineThickness = 2,
+    HealthBarThickness = 4, -- ✅ Increased Thickness for Better Visibility
+    Transparency = 0.5, -- 0 = Fully Invisible, 1 = Fully Visible
+    OverlayTransparency = 0.2, -- ✅ Transparency for the Modern Effect
+    FontSize = 13
+}
 
 local UserInputService = game:GetService("UserInputService")
-local RunService = game:GetService("RunService")
-local Camera = game.Workspace.CurrentCamera
+local camera = workspace.CurrentCamera
+local runService = game:GetService("RunService")
 
-local flying = false
-local speed = 100  -- Flight speed (adjust as needed)
-local acceleration = 5  -- How fast you accelerate
-local deceleration = 2  -- How fast you slow down
-local turnSpeed = 15  -- Instant but smooth turning
-
-local velocity = Vector3.zero  -- Stores movement momentum
-
--- Get Movement Input (WASD + Space & Ctrl)
-local function getMovementInput()
-    local moveX = (UserInputService:IsKeyDown(Enum.KeyCode.D) and 1 or 0) - (UserInputService:IsKeyDown(Enum.KeyCode.A) and 1 or 0)
-    local moveY = (UserInputService:IsKeyDown(Enum.KeyCode.Space) and 1 or 0) - (UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) and 1 or 0)
-    local moveZ = (UserInputService:IsKeyDown(Enum.KeyCode.S) and 1 or 0) - (UserInputService:IsKeyDown(Enum.KeyCode.W) and 1 or 0)
-    return Vector3.new(moveX, moveY, moveZ)
+local function createDrawing(type, properties)
+    local success, obj = pcall(Drawing.new, type)
+    if not success then return nil end -- Prevents crashes if Drawing API fails
+    for k, v in pairs(properties) do obj[k] = v end
+    return obj
 end
 
--- Start Flying
-local function startFlying()
-    if flying then return end
-    flying = true
-    humanoid.PlatformStand = true
-    game.Workspace.Gravity = 0
+local ESPObjects = {}
+
+function ESP:CreateESP(player)
+    if not player or player == game.Players.LocalPlayer or ESPObjects[player] then return end
+
+    ESPObjects[player] = {
+        BoxOutline = createDrawing("Square", {Transparency = ESP.Settings.Transparency, Filled = false, Thickness = ESP.Settings.LineThickness + 2, Color = ESP.Settings.BoxOutlineColor}), -- ⚫ Black Outline
+        Box = createDrawing("Square", {Transparency = ESP.Settings.Transparency, Filled = false, Thickness = ESP.Settings.LineThickness, Color = ESP.Settings.BoxColor}),
+        Overlay = createDrawing("Square", {Transparency = ESP.Settings.OverlayTransparency, Filled = true, Color = ESP.Settings.OverlayColor}), -- ✅ Modern Transparent Overlay
+        Name = createDrawing("Text", {Size = ESP.Settings.FontSize, Color = ESP.Settings.TextColor, Center = true, Outline = false}),
+        NameOutline = createDrawing("Text", {Size = ESP.Settings.FontSize, Color = ESP.Settings.TextOutlineColor, Center = true, Outline = true}), -- ✅ White Outline
+        HealthBar = createDrawing("Line", {Thickness = ESP.Settings.HealthBarThickness}),
+        HealthLabel = createDrawing("Text", {Size = ESP.Settings.FontSize - 2, Color = ESP.Settings.TextOutlineColor, Center = true, Outline = true})
+    }
 end
 
--- Stop Flying
-local function stopFlying()
-    if not flying then return end
-    flying = false
-    humanoid.PlatformStand = false
-    game.Workspace.Gravity = 196.2
-    root.AssemblyLinearVelocity = Vector3.zero
-end
-
--- Toggle Flight with "L"
-UserInputService.InputBegan:Connect(function(input, processed)
-    if processed then return end
-    if input.KeyCode == Enum.KeyCode.L then  -- Changed from F to L
-        if flying then stopFlying() else startFlying() end
+function ESP:RemoveESP(player)
+    if ESPObjects[player] then
+        for _, obj in pairs(ESPObjects[player]) do if obj then obj:Remove() end end
+        ESPObjects[player] = nil
     end
-end)
+end
 
--- Smooth Flight Control (Mouse + WASD)
-RunService.RenderStepped:Connect(function(deltaTime)
-    if flying then
-        local cameraDirection = Camera.CFrame.LookVector  -- Move towards where the player is looking
-        local moveInput = getMovementInput()  -- WASD movement
-
-        -- Calculate desired movement direction
-        local targetDirection = (cameraDirection * -moveInput.Z) + (Camera.CFrame.RightVector * moveInput.X) + (Vector3.new(0, moveInput.Y, 0))
-        
-        if targetDirection.Magnitude > 0 then
-            targetDirection = targetDirection.Unit -- Normalize to avoid uneven speeds
+function ESP:UpdateESP()
+    if not ESP.Settings.Enabled then
+        for _, objects in pairs(ESPObjects) do
+            for _, obj in pairs(objects) do if obj then obj.Visible = false end end
         end
+        return
+    end
 
-        -- Smooth acceleration
-        velocity = velocity:Lerp(targetDirection * speed, acceleration * deltaTime)
+    for player, objects in pairs(ESPObjects) do
+        local character = player.Character
+        local rootPart = character and character:FindFirstChild("HumanoidRootPart")
+        local humanoid = character and character:FindFirstChild("Humanoid")
 
-        -- Smooth deceleration if no input
-        if targetDirection.Magnitude == 0 then
-            velocity = velocity:Lerp(Vector3.zero, deceleration * deltaTime)
-        end
+        if character and rootPart and humanoid then
+            local vector, onScreen = camera:WorldToViewportPoint(rootPart.Position)
 
-        -- Apply movement & instant but smooth rotation
-        if velocity.Magnitude > 0 then
-            root.CFrame = root.CFrame:Lerp(CFrame.lookAt(root.Position, root.Position + velocity), turnSpeed * deltaTime)
-            root.AssemblyLinearVelocity = velocity
+            if onScreen then
+                local sizeY = math.clamp(3500 / vector.Z, 50, 350) -- Dynamic box scaling
+                local sizeX = sizeY * 0.5
+                local x, y = vector.X - (sizeX / 2), vector.Y - (sizeY / 2)
+
+                -- ✅ ESP Box Outline (Black)
+                if objects.BoxOutline then
+                    objects.BoxOutline.Size = Vector2.new(sizeX, sizeY)
+                    objects.BoxOutline.Position = Vector2.new(x, y)
+                    objects.BoxOutline.Visible = true
+                end
+
+                -- ✅ ESP Box (Blue)
+                if objects.Box then
+                    objects.Box.Size = Vector2.new(sizeX, sizeY)
+                    objects.Box.Position = Vector2.new(x, y)
+                    objects.Box.Visible = true
+                end
+
+                -- ✅ Transparent Overlay (Modern Style)
+                if objects.Overlay then
+                    objects.Overlay.Size = Vector2.new(sizeX, sizeY)
+                    objects.Overlay.Position = Vector2.new(x, y)
+                    objects.Overlay.Visible = true
+                end
+
+                -- ✅ Player Name (Blue with White Outline)
+                if objects.Name then
+                    objects.Name.Position = Vector2.new(vector.X, y - 15)
+                    objects.Name.Text = player.Name
+                    objects.Name.Visible = true
+                end
+                if objects.NameOutline then
+                    objects.NameOutline.Position = Vector2.new(vector.X + 1, y - 14) -- Slight Offset for Outline Effect
+                    objects.NameOutline.Text = player.Name
+                    objects.NameOutline.Visible = true
+                end
+
+                -- ✅ Thicker Red Health Bar
+                if objects.HealthBar then
+                    local healthRatio = humanoid.Health / humanoid.MaxHealth
+                    local healthHeight = sizeY * healthRatio
+                    objects.HealthBar.Color = ESP.Settings.HealthBarColor
+                    objects.HealthBar.From = Vector2.new(x - 8, y + sizeY) -- Shifted for better spacing
+                    objects.HealthBar.To = Vector2.new(x - 8, y + sizeY - healthHeight)
+                    objects.HealthBar.Visible = true
+                end
+
+                -- ✅ Health Label
+                if objects.HealthLabel then
+                    objects.HealthLabel.Position = Vector2.new(x - 15, y + sizeY - 15)
+                    objects.HealthLabel.Text = tostring(math.floor(humanoid.Health))
+                    objects.HealthLabel.Visible = true
+                end
+
+            else
+                for _, obj in pairs(objects) do if obj then obj.Visible = false end end
+            end
         else
-            root.AssemblyLinearVelocity = Vector3.zero
+            for _, obj in pairs(objects) do if obj then obj.Visible = false end end
         end
     end
+end
+
+function ESP:Enable()
+    for _, player in pairs(game.Players:GetPlayers()) do
+        if player ~= game.Players.LocalPlayer then ESP:CreateESP(player) end
+    end
+
+    game.Players.PlayerAdded:Connect(function(player) ESP:CreateESP(player) end)
+    game.Players.PlayerRemoving:Connect(function(player) ESP:RemoveESP(player) end)
+
+    task.wait(2) -- ✅ Ensures execution happens after game loads
+    runService.RenderStepped:Connect(function() ESP:UpdateESP() end)
+end
+
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    if input.KeyCode == ESP.Settings.ToggleKey then
+        ESP.Settings.Enabled = not ESP.Settings.Enabled
+    end
 end)
-local Players = game:GetService("Players")
+
+ESP:Enable()
+-- ✅ Aimbot Settings
+local AimbotEnabled = false -- 🔥 Press `Z` to Enable/Disable Aimbot
+local AimFOV = 145 -- 🔥 FOV for Precise Targeting
+local AimPart = "Head" -- ✅ Change to "HumanoidRootPart", "UpperTorso", etc.
+
+-- ✅ Services
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
-local Camera = game.Workspace.CurrentCamera
-local LocalPlayer = Players.LocalPlayer
+local camera = workspace.CurrentCamera
+local players = game:GetService("Players")
+local localPlayer = players.LocalPlayer
+local mouse = localPlayer:GetMouse()
 
--- UI Elements
-local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
-local AimAssistUI = PlayerGui:FindFirstChild("AimAssistGUI") -- GUI must exist
-local AimAssistSlider = AimAssistUI and AimAssistUI:FindFirstChild("AimAssistSlider")
+-- ✅ Track When Right Mouse Button is Held
+local Aiming = false
 
--- Settings
-local AimAssistEnabled = true -- Press "P" to disable completely
-local LockOnRange = 150 -- Max distance to lock onto enemies
-local DefaultAimSpeed = 0.3 -- Fast but smooth aim assist
-local AimSpeed = DefaultAimSpeed
-local currentTarget = nil
-local isLockingOn = false -- Whether Left Mouse is held
+UserInputService.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton2 and AimbotEnabled then -- 🔥 Right Click Pressed
+        Aiming = true
+    end
+    if input.KeyCode == Enum.KeyCode.Z then -- 🔥 Press `Z` to Toggle Aimbot
+        AimbotEnabled = not AimbotEnabled
+        print(AimbotEnabled and "[Aimbot Enabled]" or "[Aimbot Disabled]")
+    end
+end)
 
--- Function to find the best target (closest to crosshair)
-local function getBestTarget()
-    local bestTarget = nil
-    local bestDistance = math.huge
+UserInputService.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton2 then -- 🔥 Right Click Released
+        Aiming = false
+    end
+end)
 
-    for _, player in pairs(Players:GetPlayers()) do
-        if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") and player.Character:FindFirstChild("Humanoid") then
-            local char = player.Character
-            local root = char:FindFirstChild("HumanoidRootPart")
-            local humanoid = char:FindFirstChild("Humanoid")
+-- ✅ Create FOV Circle (Centered on Screen)
+local FOVCircle = Drawing.new("Circle")
+FOVCircle.Color = Color3.fromRGB(0, 0, 255) -- 🔵 Blue FOV Circle
+FOVCircle.Thickness = 1.5
+FOVCircle.Radius = AimFOV
+FOVCircle.Filled = false
+FOVCircle.Transparency = 0.6 -- ✅ Modern Transparency Effect
+FOVCircle.Visible = true
 
-            if root and humanoid and humanoid.Health > 0 then
-                local screenPosition, onScreen = Camera:WorldToViewportPoint(root.Position)
-                local mousePosition = UserInputService:GetMouseLocation()
-                local distanceToMouse = (Vector2.new(screenPosition.X, screenPosition.Y) - mousePosition).Magnitude
-                local worldDistance = (Camera.CFrame.Position - root.Position).Magnitude
+-- ✅ Create Blue Crosshair (BIGGER SIZE)
+local CrosshairSize = 10 -- 🔥 Increased Crosshair Size
+local CrosshairThickness = 2
+local CrosshairColor = Color3.fromRGB(0, 0, 255) -- 🔵 Blue Crosshair
 
-                if onScreen and worldDistance < LockOnRange and distanceToMouse < bestDistance then
-                    -- Raycast check to ensure visibility (no wall blocking)
-                    local ray = Ray.new(Camera.CFrame.Position, (root.Position - Camera.CFrame.Position).Unit * worldDistance)
-                    local hitPart, hitPlayer = workspace:FindPartOnRayWithIgnoreList(ray, {LocalPlayer.Character, Camera})
+local Crosshair = {
+    Vertical = Drawing.new("Line"),
+    Horizontal = Drawing.new("Line")
+}
 
-                    if hitPart and hitPart:IsDescendantOf(player.Character) then
-                        bestTarget = root
-                        bestDistance = distanceToMouse
-                    end
+for _, line in pairs(Crosshair) do
+    line.Thickness = CrosshairThickness
+    line.Color = CrosshairColor
+    line.Transparency = 1
+    line.Visible = true
+end
+
+-- ✅ Update Crosshair & FOV Circle Position (Centered)
+RunService.RenderStepped:Connect(function()
+    local screenCenter = Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y / 2)
+    FOVCircle.Position = screenCenter -- 🔥 Centered FOV
+    FOVCircle.Radius = AimFOV
+    FOVCircle.Visible = AimbotEnabled -- ✅ Only Show FOV When Aimbot is Enabled
+
+    -- ✅ Crosshair Lines (BIGGER SIZE)
+    Crosshair.Vertical.From = screenCenter + Vector2.new(0, -CrosshairSize)
+    Crosshair.Vertical.To = screenCenter + Vector2.new(0, CrosshairSize)
+    Crosshair.Horizontal.From = screenCenter + Vector2.new(-CrosshairSize, 0)
+    Crosshair.Horizontal.To = screenCenter + Vector2.new(CrosshairSize, 0)
+end)
+
+-- ✅ Get Closest Player in FOV
+local function getClosestPlayer()
+    local closestPlayer = nil
+    local shortestDistance = AimFOV
+    local screenCenter = Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y / 2)
+
+    for _, player in pairs(players:GetPlayers()) do
+        if player ~= localPlayer and player.Character then
+            local character = player.Character
+            local targetPart = character:FindFirstChild(AimPart) or character:FindFirstChild("HumanoidRootPart")
+
+            if targetPart then
+                local screenPoint, onScreen = camera:WorldToViewportPoint(targetPart.Position)
+                local distance = (Vector2.new(screenPoint.X, screenPoint.Y) - screenCenter).Magnitude
+                
+                if onScreen and distance < shortestDistance then
+                    shortestDistance = distance
+                    closestPlayer = player
                 end
             end
         end
     end
-
-    return bestTarget
+    return closestPlayer
 end
 
--- Smooth Aim Assist Function
-local function aimAtTarget(target)
-    if target then
-        local targetPosition = target.Position
-        local direction = (targetPosition - Camera.CFrame.Position).Unit
-        local newCFrame = Camera.CFrame:Lerp(CFrame.lookAt(Camera.CFrame.Position, Camera.CFrame.Position + direction), AimSpeed)
-        Camera.CFrame = newCFrame
-    end
-end
-
--- Toggle Aim Assist ON/OFF with "P"
-UserInputService.InputBegan:Connect(function(input, processed)
-    if not processed and input.KeyCode == Enum.KeyCode.P then
-        AimAssistEnabled = not AimAssistEnabled
-        currentTarget = nil -- Reset target when disabling
-    end
-end)
-
--- Hold Left Mouse to Lock On
-UserInputService.InputBegan:Connect(function(input, processed)
-    if not processed and input.UserInputType == Enum.UserInputType.MouseButton1 then
-        isLockingOn = true
-    end
-end)
-
--- Release Left Mouse to Unlock
-UserInputService.InputEnded:Connect(function(input, processed)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 then
-        isLockingOn = false
-        currentTarget = nil -- Reset target when releasing click
-    end
-end)
-
--- Update Aim Speed from Slider
-if AimAssistSlider then
-    AimAssistSlider.Changed:Connect(function()
-        AimSpeed = DefaultAimSpeed + (AimAssistSlider.Value / 100) * 0.4 -- Faster response time
-    end)
-end
-
--- Main Loop (Locks On Only When Holding Left Click)
-RunService.RenderStepped:Connect(function()
-    if AimAssistEnabled and isLockingOn then
-        local newTarget = getBestTarget()
-
-        if newTarget and newTarget ~= currentTarget then
-            currentTarget = newTarget -- Switch to new target when moving mouse
+-- ✅ INSTANT Lock-On Function (No Smoothing, No Delay, HIGH Precision)
+local function instantLock(target)
+    if target and target.Character then
+        local targetPart = target.Character:FindFirstChild(AimPart) or target.Character:FindFirstChild("HumanoidRootPart")
+        if targetPart then
+            camera.CFrame = CFrame.new(camera.CFrame.Position, targetPart.Position) -- 🔥 INSTANT LOCK-ON, NO DELAY
         end
+    end
+end
 
-        if currentTarget then
-            aimAtTarget(currentTarget)
+-- ✅ Aimbot Loop (Runs When `Z` is Enabled & Right Mouse is Held)
+RunService.RenderStepped:Connect(function()
+    if AimbotEnabled and Aiming then
+        local target = getClosestPlayer()
+        if target then
+            instantLock(target)
         end
     end
 end)
